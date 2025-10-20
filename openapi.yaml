@@ -1,0 +1,338 @@
+openapi: 3.1.0
+info:
+  title: AI Datawrapper Agent API
+  description: Azure Function API for creating Datawrapper charts from Google Sheets URLs
+  version: 1.0.0
+  contact:
+    name: AI Datawrapper Agent
+    url: https://github.com/your-repo/ai-datawrapper-agent-api
+
+servers:
+  - url: https://ai-datawrapper-agent-api.azurewebsites.net/api
+    description: Production server
+
+paths:
+  /create_chart_id:
+    post:
+      summary: Create a Datawrapper chart ID and upload data (Step 1)
+      description: |
+        Step 1 of chart creation: Creates a Datawrapper chart with the specified type and title,
+        then uploads data from a Google Sheets file URL.
+        Returns the chart ID for use in the next step.
+      operationId: createChartId
+      tags: [Charts]
+      security:
+        - FunctionsKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_url, chart_type, title]
+              properties:
+                file_url:
+                  type: string
+                  format: uri
+                  description: URL to Google Sheets file
+                chart_type:
+                  type: string
+                  enum:
+                    - d3-bars-stacked
+                    - d3-bars
+                    - d3-lines
+                    - d3-pie
+                    - d3-scatter
+                    - d3-maps-choropleth
+                    - d3-maps-symbols
+                    - d3-bars-horizontal
+                    - d3-bars-grouped
+                    - d3-lines-multi
+                title:
+                  type: string
+                  maxLength: 200
+                  description: Chart title
+            example:
+              file_url: "https://docs.google.com/spreadsheets/d/1b_h7Wkd1y1-sNjkeR4izCowbRqLpeIS0FYmZkIFSInk/edit?usp=sharing"
+              chart_type: "d3-bars-stacked"
+              title: "Quarterly Sales by Region"
+
+      responses:
+        '200':
+          description: Chart ID created and data uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, chart_id, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  chart_id:
+                    type: string
+                    description: The created chart ID
+                  message:
+                    type: string
+                    description: Success message
+              example:
+                status: success
+                chart_id: abc123def456
+                message: "Chart created and data uploaded successfully"
+
+        '400':
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              examples:
+                missing_fields:
+                  summary: Missing required fields
+                  value:
+                    status: error
+                    message: "Missing required fields: file_url, chart_type, title"
+                invalid_url:
+                  summary: Invalid file URL
+                  value:
+                    status: error
+                    message: "Invalid file URL. Must be a Google Sheets URL"
+
+        '401':
+          description: Unauthorized - invalid Functions key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              example:
+                status: error
+                message: "Invalid Functions Key"
+
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              examples:
+                datawrapper_error:
+                  summary: Datawrapper API error
+                  value:
+                    status: error
+                    message: "Error calling Datawrapper API: Authentication failed"
+                token_missing:
+                  summary: Missing Datawrapper token
+                  value:
+                    status: error
+                    message: "Datawrapper API token not configured"
+                file_processing_error:
+                  summary: File processing error
+                  value:
+                    status: error
+                    message: "Error processing file: Invalid CSV format"
+
+  /update_chart:
+    post:
+      summary: Update chart metadata and publish (Step 2)
+      description: |
+        Step 2 of chart creation: Updates the chart metadata (intro, byline, source info, custom colors)
+        and publishes the chart. Requires the chart_id from Step 1.
+        Returns the final chart URL.
+      operationId: updateChart
+      tags: [Charts]
+      security:
+        - FunctionsKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chart_id, source_name]
+              properties:
+                chart_id:
+                  type: string
+                  description: Chart ID from Step 1 (create_chart_id)
+                intro:
+                  type: string
+                  maxLength: 1000
+                  description: Chart introduction text
+                byline:
+                  type: string
+                  maxLength: 200
+                  description: Chart byline/attribution
+                source_name:
+                  type: string
+                  maxLength: 100
+                  description: Data source name
+                source_url:
+                  type: string
+                  format: uri
+                  description: Data source URL
+                custom_colors:
+                  oneOf:
+                    - type: string
+                      description: JSON string of custom colors
+                    - type: object
+                      description: Object with color mappings
+            example:
+              chart_id: "abc123def456"
+              intro: "Shows quarterly sales by region."
+              byline: "Data source: Company Sales Database"
+              source_name: "Company Sales Database"
+              source_url: "https://example.com/sales-data"
+              custom_colors: {"North": "#ff6b6b", "South": "#4ecdc4", "East": "#45b7d1"}
+
+      responses:
+        '200':
+          description: Chart metadata updated and published successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, chart_id, chart_url, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  chart_id:
+                    type: string
+                    description: The chart ID
+                  chart_url:
+                    type: string
+                    format: uri
+                    description: The published chart URL
+                  message:
+                    type: string
+                    description: Success message
+              example:
+                status: success
+                chart_id: abc123def456
+                chart_url: https://www.datawrapper.de/_/abc123def456/
+                message: "Chart metadata updated and published successfully"
+
+        '400':
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              examples:
+                missing_fields:
+                  summary: Missing required fields
+                  value:
+                    status: error
+                    message: "Missing required fields: chart_id, source_name"
+                invalid_colors:
+                  summary: Invalid custom_colors format
+                  value:
+                    status: error
+                    message: "Invalid custom_colors JSON format"
+
+        '401':
+          description: Unauthorized - invalid Functions key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              example:
+                status: error
+                message: "Invalid Functions Key"
+
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  message:
+                    type: string
+              examples:
+                datawrapper_error:
+                  summary: Datawrapper API error
+                  value:
+                    status: error
+                    message: "Error calling Datawrapper API: Chart not found"
+                token_missing:
+                  summary: Missing Datawrapper token
+                  value:
+                    status: error
+                    message: "Datawrapper API token not configured"
+
+components:
+  securitySchemes:
+    FunctionsKeyAuth:
+      type: apiKey
+      in: header
+      name: x-functions-key
+      description: >
+        Azure Functions host key for function-level authentication (auth_level=FUNCTION).
+        Alternatively, this same key can be supplied as query parameter `code`.
+  schemas:
+    ChartType:
+      type: string
+      enum:
+        - d3-bars-stacked
+        - d3-bars
+        - d3-lines
+        - d3-pie
+        - d3-scatter
+        - d3-maps-choropleth
+        - d3-maps-symbols
+        - d3-bars-horizontal
+        - d3-bars-grouped
+        - d3-lines-multi
+
+    FileURL:
+      type: string
+      format: uri
+      description: |
+        URL to Google Sheets file.
+        Must be a valid sharing URL.
+      examples:
+        - summary: Google Sheets URL
+          value: "https://docs.google.com/spreadsheets/d/1b_h7Wkd1y1-sNjkeR4izCowbRqLpeIS0FYmZkIFSInk/edit?usp=sharing"
+
+tags:
+  - name: Charts
+    description: Chart creation and management
